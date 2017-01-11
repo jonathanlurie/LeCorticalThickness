@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Le Cortical Thickness</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				color: #cccccc;
+				font-family:Monospace;
+				font-size:13px;
+				text-align:center;
+
+				background-color: #050505;
+				margin: 0px;
+				overflow: hidden;
+			}
+
+			#info {
+				position: absolute;
+				top: 0px; width: 100%;
+				padding: 5px;
+			}
+
+			a {
+				color: #0080ff;
+			}
+
+		</style>
+	</head>
+	<body>
+
+		<div id="container"></div>
+		<div id="info">Le Cortical Thickness</div>
+
+		<script src="js/vendors/three.js"></script>
+    <script src="js/vendors/Lut.js"></script>
+    <script src="js/vendors/TrackballControls.js"></script>
+		<script src="js/vendors/Detector.js"></script>
+		<script src="js/vendors/stats.min.js"></script>
+
+    <script src="js/getTextFile.js"></script>
+    <script src="js/MniObjReader.js"></script>
+
+		<script>
+
+			if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+
+      var whiteLeftName =  "white_left";
+      var grayLeftName = "gray_left";
+
+			var container, stats;
+			var camera, scene, renderer;
+      var objectContainer = new THREE.Object3D();
+      var lineContainer = new THREE.Object3D();
+      var raycaster = new THREE.Raycaster();
+      var mouse = new THREE.Vector2();
+      var controls = null;
+      var numberOfShapesToLoad = 2;
+      var numberOfShapesLoaded = 0;
+
+
+
+      init();
+      animate();
+
+      var corticalThicknessFile = "thickness/ping_P0007_native_rms_rsl_tfs_0mm_left.txt";
+      readMniobjFile("models/ping_P0007_white_surface_left_327680.obj", whiteLeftName);
+      readMniobjFile("models/ping_P0007_gray_surface_left_327680.obj", grayLeftName);
+
+
+
+			function init() {
+
+				container = document.getElementById( 'container' );
+
+				//
+
+				camera = new THREE.PerspectiveCamera( 27, window.innerWidth / window.innerHeight, 1, 3500 );
+				camera.position.z = 500;
+
+				scene = new THREE.Scene();
+				scene.fog = new THREE.Fog( 0x050505, 2000, 3500 );
+
+				//
+
+				scene.add( new THREE.AmbientLight( 0x444444 ) );
+
+				var light1 = new THREE.DirectionalLight( 0xffffff, 0.5 );
+				light1.position.set( 1, 1, 1 );
+				scene.add( light1 );
+
+				var light2 = new THREE.DirectionalLight( 0xffffff, 1.5 );
+				light2.position.set( 0, -1, 0 );
+				scene.add( light2 );
+
+        //
+
+        scene.add( objectContainer );
+        scene.add( lineContainer );
+
+
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setClearColor( scene.fog.color );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+				renderer.gammaInput = true;
+				renderer.gammaOutput = true;
+
+				container.appendChild( renderer.domElement );
+
+				//
+
+        controls = new THREE.TrackballControls( camera );
+        controls.staticMoving = true;
+        controls.rotateSpeed = 10.0;
+				controls.zoomSpeed = 3;
+				controls.panSpeed = 0.8;
+        controls.addEventListener( 'change', render );
+
+        //
+
+				stats = new Stats();
+				container.appendChild( stats.dom );
+
+				//
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+        controls.handleResize();
+			}
+
+			//
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+
+				//render();
+        controls.update();
+				stats.update();
+
+			}
+
+			function render() {
+
+				//var time = Date.now() * 0.001;
+
+				//objectContainer.rotation.x = time * 0.25;
+				//objectContainer.rotation.y = time * 0.5;
+
+				renderer.render( scene, camera );
+
+			}
+
+
+      // build a geometry out of a mniObjReader
+      function buildMeshFromObjReader( mniObjReader ){
+        var geometry = new THREE.BufferGeometry();
+
+        var indices = mniObjReader.getShapeRawIndices(0);
+        var positions = mniObjReader.getRawVertices();
+        var normals = mniObjReader.getRawNormals();
+        var colors = mniObjReader.getRawColors();
+
+        geometry.setIndex( new THREE.BufferAttribute( indices, 1 ) );
+        geometry.addAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
+        geometry.addAttribute( 'normal', new THREE.BufferAttribute( normals, 3, true ) );
+        geometry.addAttribute( 'color', new THREE.BufferAttribute( colors, 4, true ) );
+        geometry.computeBoundingSphere();
+
+        var material = new THREE.MeshPhongMaterial( {
+          specular: 0xffffff,
+          shininess: 300,
+          side: THREE.DoubleSide,
+          vertexColors: THREE.VertexColors,
+          transparent: false,
+          //opacity: mniObjReader.getSurfaceProperties().transparency,
+        } );
+
+        var mesh = new THREE.Mesh( geometry, material );
+
+        return mesh;
+      }
+
+
+
+      function readMniobjFile( mniObjFilepath, shapeName ){
+        console.log("Reading " + mniObjFilepath + " ...");
+
+        getTextFile( mniObjFilepath , function(data) {
+          var objReader = new MniObjReader();
+          objReader.parse( data );
+
+          var mesh = buildMeshFromObjReader( objReader );
+          mesh.name = shapeName;
+          objectContainer.add( mesh );
+
+          numberOfShapesLoaded++
+
+          if( numberOfShapesToLoad == numberOfShapesLoaded){
+            allShapesLoaded();
+          }
+
+          render();
+        }, function(status) {
+        	console.log('Something went wrong.');
+        });
+
+      }
+
+
+
+
+      function drawLine( p1, p2 ){
+        //console.log("lining...");
+        //console.log(p1);
+        //console.log(p2);
+        var geometry = new THREE.Geometry();
+        geometry.vertices.push( p1, p2 );
+
+        var line = new THREE.Line( geometry, lineMaterial );
+        lineContainer.add( line );
+      }
+
+
+      function allShapesLoaded(){
+
+        getTextFile(corticalThicknessFile,
+          // success
+          function(cortThickString){
+            var corticalThicknessStat = corticalThicknessLoaded(cortThickString);
+
+            displayStat( corticalThicknessStat );
+            console.log(corticalThicknessStat);
+
+            var colorLUT = new THREE.Lut( "cooltowarm", 512 );
+            // with min and max
+            //colorLUT.setMin( corticalThicknessStat.min );
+            //colorLUT.setMax( corticalThicknessStat.max );
+
+            // with avg - 3*sigma an d avg + 3*sigma
+            colorLUT.setMin( corticalThicknessStat.avg - (3*corticalThicknessStat.std) );
+            colorLUT.setMax( corticalThicknessStat.avg + (3*corticalThicknessStat.std) );
+
+            var whiteLeftMesh = objectContainer.getObjectByName( whiteLeftName );
+            var grayLeftMesh = objectContainer.getObjectByName( grayLeftName );
+
+            var whiteLeftColorArray = whiteLeftMesh.geometry.attributes.color.array;
+            var grayLeftColorArray = grayLeftMesh.geometry.attributes.color.array;
+            var corticalThicknessArray = corticalThicknessStat.data;
+
+            // change color
+            for(var i=0; i<whiteLeftColorArray.length; i+=4){
+              var tempColor = colorLUT.getColor( corticalThicknessArray[i/4] );
+
+              whiteLeftColorArray[i] = tempColor.r * 255;
+              whiteLeftColorArray[i+1] = tempColor.g * 255;
+              whiteLeftColorArray[i+2] = tempColor.b * 255;
+              whiteLeftColorArray[i+3] = 255;
+
+              grayLeftColorArray[i] = tempColor.r * 255;
+              grayLeftColorArray[i+1] = tempColor.g * 255;
+              grayLeftColorArray[i+2] = tempColor.b * 255;
+              grayLeftColorArray[i+3] = 255;
+            }
+
+            whiteLeftMesh.geometry.attributes.color.needsUpdate = true;
+            grayLeftMesh.geometry.attributes.color.needsUpdate = true;
+
+            grayLeftMesh.visible = false;
+
+            render();
+          },
+
+          // fail
+          function(){
+            console.log("Failed");
+          }
+        );
+
+      }
+
+
+      /**
+      * parses a large string of cortical thickness data
+      * @param {String} cort - raw string from the cortical thickness file
+      * @return {Object} - { min, max, avg } numbers
+      */
+      function corticalThicknessLoaded( cort ){
+        var thicknessRaw = cort.trim().split(/\s+/);
+        var thicknessFloat = new Float32Array(thicknessRaw.length);
+
+        var min = parseFloat(thicknessRaw[0]);
+        var max = parseFloat(thicknessRaw[0]);
+        var avg = 0;
+        var tempSum = 0;
+
+        // min, max and avg
+        thicknessRaw.forEach(function(elem, i){
+          var curThickness = parseFloat( elem );
+          thicknessFloat[i] = curThickness;
+          tempSum += curThickness;
+          min = Math.min(min, curThickness);
+          max = Math.max(max, curThickness);
+        })
+
+        avg = tempSum / thicknessRaw.length;
+
+        // standard deviation
+        var tempSum = 0;
+        thicknessFloat.forEach(function(thickness){
+          tempSum += (thickness - avg)*(thickness - avg);
+        });
+
+        var std = Math.sqrt(tempSum / thicknessFloat.length);
+
+        // median
+        var thicknessFloatOrdered = thicknessFloat.slice().sort();
+        var median = thicknessFloatOrdered[ Math.floor(thicknessFloatOrdered.length / 2) ];
+
+        return {
+          data: thicknessFloat,
+          min: min,
+          max: max,
+          avg: avg,
+          median: median,
+          std: std
+        }
+
+      }
+
+
+      function displayStat( stat ){
+        var infoDiv = document.getElementById("info");
+
+        var concatStat = "<b>Le Cortical Thickness</b>" + "<br />";
+        concatStat += "min: " + roundTo3(stat.min) + " max: " + roundTo3(stat.max) + "<br />";
+        concatStat += "avg: " + roundTo3(stat.avg) + " median: " + roundTo3(stat.median) + " ";
+        concatStat += "σ: " + roundTo3(stat.std) + "<br />";
+        concatStat += "[x̅-2σ, x̅+2σ]: [" + roundTo3(stat.avg-2*stat.std) + ", " + roundTo3(stat.avg+2*stat.std) + "]" + "<br />";
+        concatStat += "[x̅-3σ, x̅+3σ]: [" + roundTo3(stat.avg-3*stat.std) + ", " + roundTo3(stat.avg+3*stat.std) + "]" + "<br />";
+
+        infoDiv.innerHTML = concatStat;
+      }
+
+      function roundTo3(num) {
+        return +(Math.round(num + "e+3")  + "e-3");
+      }
+
+		</script>
+
+	</body>
+</html>
