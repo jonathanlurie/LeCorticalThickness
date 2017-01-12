@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>Le Cortical Thickness</title>
+		<title>Le Vertex Picker</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<style>
@@ -36,14 +36,29 @@
         display: none;
       }
 
+
+      .logoCorner{
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 48px;
+        margin: 5px;
+      }
+
+      .logoCorner:hover{
+        filter: invert(100%);
+      }
+
 		</style>
 	</head>
 	<body>
     <input type="file" id="mniobjOpener" class="hidden">
     <input type="file" id="thicknessOpener" class="hidden">
 		<div id="container"></div>
-		<div id="info">Le Cortical Thickness</div>
-    <div id="infoDown">[hold shift while hovering the model to show cortical thickness info]</div>
+		<div id="info">Le Vertex Picker</div>
+    <div id="infoDown">[hold shift while hovering the model to show the vertex value]</div>
+
+    <a href="https://github.com/jonathanlurie/LeCorticalThickness" target="_blank"><img class="logoCorner" src="img/simpleLogo.png"/></a>
 
     <script src="js/vendors/dat.gui.min.js"></script>
 
@@ -69,6 +84,7 @@
       var mouse = new THREE.Vector2();
       var controls = null;
       var corticalThicknessStat = null;
+      var arrowHelper = null;
 
       var guiVar = null;
       var datGui = new dat.GUI();
@@ -81,7 +97,6 @@
       }
 
       window.addEventListener( 'mousemove', onMouseMove, false );
-      window.addEventListener( 'click', mouseClick, false );
 
 
       initGUI();
@@ -89,10 +104,26 @@
       animate();
 
 
-      function mouseClick( event ){
+      function positionArrowHelper( origin, direction ){
+        if( arrowHelper ){
+          scene.remove( arrowHelper );
+          arrowHelper = null;
+        }
 
-
+        var length = objectContainer.getObjectByName( "brainPiece" ).geometry.boundingSphere.radius / 4;
+        arrowHelper = new THREE.ArrowHelper(
+          direction,
+          origin,
+          length,
+          0x00aa00,
+          0.3 * length,
+          0.3 * length * 0.4
+         );
+        arrowHelper.position.sub( direction.clone().multiplyScalar( length ) );
+        scene.add( arrowHelper );
+        render();
       }
+
 
       function onMouseMove( event ) {
       	mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
@@ -107,7 +138,7 @@
         if(event.shiftKey){
           raycaster.setFromCamera( mouse, camera );
           var intersects = raycaster.intersectObject(
-            objectContainer.getObjectByName( "hemisphere" )
+            objectContainer.getObjectByName( "brainPiece" )
           );
 
           if(intersects.length){
@@ -118,14 +149,23 @@
                 corticalThicknessStat.data[face.b] +
                 corticalThicknessStat.data[face.c]) / 3;
 
-              var description = "position [";
+              var description = "position: [";
               description += roundTo3( intersects[0].point.x ) + ", ";
               description += roundTo3( intersects[0].point.y ) + ", ";
               description += roundTo3( intersects[0].point.z ) + "]";
-              description += "  cortical thickness: " + roundTo3(thickness);
+
+              description += " - Closest vertices: [";
+              description += face.a + ", ";
+              description += face.b + ", ";
+              description += face.c + "]";
+
+              description += " - Vertex value: " + roundTo3(thickness);
               displayInfoBottom( description );
+
+              positionArrowHelper( intersects[0].point, intersects[0].face.normal.clone().negate() )
+
             }else{
-              displayInfoBottom( "[Cortical thickness file must be loaded first]" );
+              displayInfoBottom( "[A vertex value file must be loaded first]" );
             }
           }
         };
@@ -164,7 +204,7 @@
 
 
       function showOpenThicknessFile(){
-        guiControllers["openThicknessButton"] = datGui.add(guiVar, 'openThicknessFile').name("Cortical thickness");
+        guiControllers["openThicknessButton"] = datGui.add(guiVar, 'openThicknessFile').name("Vertex value");
 
         document.getElementById('thicknessOpener').addEventListener(
           'change',
@@ -177,7 +217,7 @@
         guiControllers["opacitySlider"] = datGui.add(guiVar, 'meshOpacity', 0, 1, 0.01).name("Opacity");
 
         guiControllers["opacitySlider"].onChange(function(opacity) {
-          objectContainer.getObjectByName( "hemisphere" )
+          objectContainer.getObjectByName( "brainPiece" )
             .material
             .opacity = opacity
 
@@ -202,7 +242,10 @@
 
                 var mesh = buildMeshFromObjReader( objReader );
                 objectContainer.add( mesh );
-                mesh.name = "hemisphere";
+                mesh.name = "brainPiece";
+
+                updatedCamera( mesh.geometry.boundingSphere )
+
                 config.numberOfVertices = mesh.geometry.attributes.normal.array.length / 3;
 
                 guiControllers["openMniObjButton"].remove();
@@ -224,6 +267,12 @@
         }
       }
 
+
+      function updatedCamera( boundingSphere ){
+        camera.lookAt( boundingSphere.center );
+        camera.position.z = boundingSphere.radius * 5;
+        controls.target = boundingSphere.center;
+      }
 
       function handleThicknessFileSelect( e ){
         var files = e.target.files; // FileList object
@@ -272,6 +321,7 @@
 
 				camera = new THREE.PerspectiveCamera( 27, window.innerWidth / window.innerHeight, 1, 3500 );
 				camera.position.z = 500;
+
 
 				scene = new THREE.Scene();
 
@@ -382,14 +432,13 @@
         corticalThicknessStat = getThicknessStats(corticalThicknessRawData);
 
         if( corticalThicknessStat.data.length != config.numberOfVertices){
-          var errorString = "Incompatible number of vertices.\nMesh: " + config.numberOfVertices + "\nCortical thickness: " + corticalThicknessStat.data.length;
+          var errorString = "Incompatible number of vertices.\nMesh: " + config.numberOfVertices + "\nVertex value: " + corticalThicknessStat.data.length;
           console.error(errorString);
           alert(errorString);
           return;
         }
 
         displayStat( corticalThicknessStat );
-        console.log(corticalThicknessStat);
 
         var colorLUT = new THREE.Lut( "cooltowarm", 512 );
         // with min and max
@@ -400,22 +449,22 @@
         colorLUT.setMin( corticalThicknessStat.avg - (3*corticalThicknessStat.std) );
         colorLUT.setMax( corticalThicknessStat.avg + (3*corticalThicknessStat.std) );
 
-        var hemisphereMesh = objectContainer.getObjectByName( "hemisphere" );
-        var hemisphereColorArray = hemisphereMesh.geometry.attributes.color.array;
+        var brainPieceMesh = objectContainer.getObjectByName( "brainPiece" );
+        var brainPieceColorArray = brainPieceMesh.geometry.attributes.color.array;
         var corticalThicknessArray = corticalThicknessStat.data;
 
         // change color
-        for(var i=0; i<hemisphereColorArray.length; i+=4){
+        for(var i=0; i<brainPieceColorArray.length; i+=4){
           var tempColor = colorLUT.getColor( corticalThicknessArray[i/4] );
 
-          hemisphereColorArray[i] = tempColor.r * 255;
-          hemisphereColorArray[i+1] = tempColor.g * 255;
-          hemisphereColorArray[i+2] = tempColor.b * 255;
-          hemisphereColorArray[i+3] = 255;
+          brainPieceColorArray[i] = tempColor.r * 255;
+          brainPieceColorArray[i+1] = tempColor.g * 255;
+          brainPieceColorArray[i+2] = tempColor.b * 255;
+          brainPieceColorArray[i+3] = 255;
 
         }
 
-        hemisphereMesh.geometry.attributes.color.needsUpdate = true;
+        brainPieceMesh.geometry.attributes.color.needsUpdate = true;
         render();
       }
 
@@ -477,7 +526,7 @@
       function displayStat( stat ){
         var infoDiv = document.getElementById("info");
 
-        var concatStat = "<b>Le Cortical Thickness</b>" + "<br />";
+        var concatStat = "<b>Le Vertex Picker</b>" + "<br />";
         concatStat += "min: " + roundTo3(stat.min) + " max: " + roundTo3(stat.max) + "<br />";
         concatStat += "avg: " + roundTo3(stat.avg) + " median: " + roundTo3(stat.median) + " ";
         concatStat += "σ: " + roundTo3(stat.std) + "<br />";
