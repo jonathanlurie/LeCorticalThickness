@@ -111,6 +111,7 @@
         }
 
         var length = objectContainer.getObjectByName( "brainPiece" ).geometry.boundingSphere.radius / 4;
+
         arrowHelper = new THREE.ArrowHelper(
           direction,
           origin,
@@ -162,7 +163,7 @@
               description += " - Vertex value: " + roundTo3(thickness);
               displayInfoBottom( description );
 
-              positionArrowHelper( intersects[0].point, intersects[0].face.normal.clone().negate() )
+              positionArrowHelper( intersects[0].point, intersects[0].face.normal.clone().negate() );
 
             }else{
               displayInfoBottom( "[A vertex value file must be loaded first]" );
@@ -170,6 +171,50 @@
           }
         };
       }
+
+
+      function positionArrowOnVertex( vertexIndex ){
+        var positionsArray = objectContainer
+          .getObjectByName( "brainPiece" )
+          .geometry
+          .attributes
+          .position
+          .array;
+
+        var normalsArray = objectContainer
+          .getObjectByName( "brainPiece" )
+          .geometry
+          .attributes
+          .normal
+          .array;
+
+        var position = new THREE.Vector3(
+          positionsArray[ vertexIndex*3 ],
+          positionsArray[ vertexIndex*3 +1 ],
+          positionsArray[ vertexIndex*3 +2 ]
+        );
+
+        var normal = new THREE.Vector3(
+          normalsArray[ vertexIndex*3 ],
+          normalsArray[ vertexIndex*3 +1 ],
+          normalsArray[ vertexIndex*3 +2 ]
+        );
+
+        positionArrowHelper( position, normal.clone().negate() );
+
+        var description = "position: [";
+        description += roundTo3( position.x ) + ", ";
+        description += roundTo3( position.y ) + ", ";
+        description += roundTo3( position.z ) + "]";
+
+        description += " - Vertex index: " + vertexIndex;
+
+        description += " - Vertex value: " + roundTo3( corticalThicknessStat.data[vertexIndex] );
+        displayInfoBottom( description );
+
+      }
+
+
 
       function initGUI(){
         guiVar = {
@@ -187,6 +232,16 @@
           openThicknessFile: function(){
             document.getElementById('thicknessOpener').click();
           },
+
+          spotMin: function (){
+            console.log('spot the min');
+            positionArrowOnVertex( corticalThicknessStat.minIndex );
+          },
+
+          spotMax: function (){
+            console.log('spot the max');
+            positionArrowOnVertex( corticalThicknessStat.maxIndex );
+          }
         }
 
         //guiControllers["debugButton"] = datGui.add(guiVar, 'debug');
@@ -210,6 +265,13 @@
           'change',
           handleThicknessFileSelect,
           false);
+
+
+      }
+
+      function onceVertexDataLoaded(){
+        guiControllers["spotMin"] = datGui.add(guiVar, 'spotMin').name("Spot minimum");
+        guiControllers["spotMax"] = datGui.add(guiVar, 'spotMax').name("Spot maximum");
       }
 
 
@@ -466,6 +528,8 @@
 
         brainPieceMesh.geometry.attributes.color.needsUpdate = true;
         render();
+
+        onceVertexDataLoaded();
       }
 
 
@@ -482,6 +546,8 @@
         var max = parseFloat(thicknessRaw[0]);
         var avg = 0;
         var tempSum = 0;
+        var minIndex = 0;
+        var maxIndex = 0;
 
         // min, max and avg
         thicknessRaw.forEach(function(elem, i){
@@ -490,6 +556,15 @@
           tempSum += curThickness;
           min = Math.min(min, curThickness);
           max = Math.max(max, curThickness);
+
+          if(min == curThickness){
+            minIndex = i;
+          }
+
+          if(max == curThickness){
+            maxIndex = i;
+          }
+
         })
 
         avg = tempSum / thicknessRaw.length;
@@ -512,7 +587,9 @@
           max: max,
           avg: avg,
           median: median,
-          std: std
+          std: std,
+          minIndex: minIndex,
+          maxIndex: maxIndex
         }
 
       }
